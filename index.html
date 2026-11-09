@@ -96,9 +96,9 @@
 <div class="modal" id="settings"><div class="card">
   <h2>SETUP</h2>
   <label>Your Gemini API key (free from aistudio.google.com)</label>
-  <input id="keyIn" type="password" autocomplete="off" placeholder="Paste key here">
+  <input id="keyIn" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste key here">
   <label>Gemini model</label>
-  <input id="modelIn" autocomplete="off">
+  <input id="modelIn" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
   <label>Your name</label>
   <input id="nameIn" autocomplete="off">
   <button type="button" id="saveSet">SAVE</button>
@@ -508,14 +508,14 @@ const settingsEl = document.getElementById('settings');
 const keyIn = document.getElementById('keyIn'), modelIn = document.getElementById('modelIn'), nameIn = document.getElementById('nameIn');
 function openSettings(){
   keyIn.value = store.get('gideonKey','');
-  modelIn.value = store.get('gideonModel','gemini-2.5-flash');
+  modelIn.value = store.get('gideonModel','gemini-3.8-flash');
   nameIn.value = store.get('gideonName','Liam');
   settingsEl.classList.add('show');
 }
 document.getElementById('gear').onclick = openSettings;
 document.getElementById('saveSet').onclick = ()=>{
   store.set('gideonKey', keyIn.value.trim());
-  store.set('gideonModel', modelIn.value.trim() || 'gemini-2.5-flash');
+  store.set('gideonModel', (modelIn.value.trim() || 'gemini-3.8-flash').toLowerCase().replace(/\s+/g,''));
   store.set('gideonName', nameIn.value.trim() || 'Liam');
   settingsEl.classList.remove('show');
   speak('Configuration saved. All systems online.');
@@ -626,9 +626,11 @@ function addMsg(who, text){
 /* ---------- The brain: Google Gemini ----------
    We send Gideon's personality + the conversation as JSON,
    and Gemini sends back JSON with the answer inside. */
-async function askGemini(useSearch = true){
-  const key = store.get('gideonKey','');
-  const model = store.get('gideonModel','gemini-2.5-flash');
+// Free models to try, in order, if the chosen one isn't available on this key
+const FALLBACK_MODELS = ['gemini-3.8-flash','gemini-3.7-flash','gemini-3.6-flash','gemini-3.5-flash','gemini-3.5-flash-lite','gemini-3.1-flash-lite','gemini-2.5-flash','gemini-2.5-flash-lite'];
+let searchOK = true;    // turns off automatically if web search isn't free for this key
+
+async function callGemini(model, useSearch){
   const body = {
     system_instruction: { parts: [{ text: SYSTEM.replace('{NAME}', store.get('gideonName','Liam')) }] },
     contents: history.slice(-20).map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }))
@@ -636,17 +638,36 @@ async function askGemini(useSearch = true){
   if(useSearch) body.tools = [{ google_search: {} }];              // lets Gemini look things up
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': store.get('gideonKey','').trim() },
     body: JSON.stringify(body)
   });
   const data = await res.json().catch(()=> ({}));
-  if(!res.ok){
-    // if web search isn't allowed for this key/model, try again without it
-    if(useSearch && (res.status === 400 || res.status === 403 || res.status === 429) && /search|tool|ground/i.test(data?.error?.message || '')) return askGemini(false);
-    const err = new Error(data?.error?.message || ('HTTP ' + res.status)); err.status = res.status; throw err;
-  }
+  if(!res.ok){ const err = new Error(data?.error?.message || ('HTTP ' + res.status)); err.status = res.status; throw err; }
   const parts = data?.candidates?.[0]?.content?.parts || [];
   return parts.map(p => p.text || '').join('').replace(/[*#_`]/g, '').trim();
+}
+
+async function askGemini(){
+  const chosen = store.get('gideonModel','gemini-3.8-flash');
+  const models = [chosen, ...FALLBACK_MODELS.filter(m => m !== chosen)];
+  let lastErr = null;
+  for(const model of models){
+    for(const useSearch of (searchOK ? [true,false] : [false])){
+      try{
+        const text = await callGemini(model, useSearch);
+        if(!useSearch) searchOK = false;
+        if(model !== chosen) store.set('gideonModel', model);       // remember the one that worked
+        note('');
+        return text;
+      }catch(err){
+        lastErr = err;
+        if(err.status === 400 && /api key/i.test(err.message)) throw err;      // bad key: no point retrying
+        if(err.status === 401 || err.status === 403 && /key/i.test(err.message)) throw err;
+        // otherwise (model missing, not free, search not free) try the next option
+      }
+    }
+  }
+  throw lastErr;
 }
 
 async function sendText(text){
@@ -671,6 +692,7 @@ async function sendText(text){
     if(err.status === 429) reply = "I've reached my free usage limit for now. Please wait a minute and try again.";
     if(err.message === 'Failed to fetch') reply = "I can't reach my servers. Please check your internet connection.";
     console.warn(err);
+    note('Google says: ' + String(err.message || err).slice(0, 220));
   }
   body.textContent = reply; log.scrollTop = log.scrollHeight;
   thinking = false; sendBtn.disabled = false; statusEl.textContent = 'Online';
