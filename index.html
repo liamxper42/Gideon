@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gideon">
+<meta name="theme-color" content="#03060d">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Gideon</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --glow:#5fd4ff; --glow2:#2a7cff; --bg:#03060d; --text:#d8f3ff; --dim:#6f8fa3; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font-family:Inter,system-ui,sans-serif; }
+  body {
+    display:flex; flex-direction:column; min-height:100dvh;
+    background: radial-gradient(ellipse at 50% 20%, #0a1e33 0%, var(--bg) 60%);
+    overflow:hidden;
+  }
+  header { position:relative; text-align:center; padding:calc(14px + env(safe-area-inset-top)) 12px 0; }
+  #gear { position:absolute; right:12px; top:calc(10px + env(safe-area-inset-top)); height:36px; padding:0 10px; font-size:16px; border-color:#2a4d6b; color:#7fb6d9; }
+  h1 { font-family:Orbitron,sans-serif; letter-spacing:.5em; font-size:20px; margin:0; color:var(--glow); text-shadow:0 0 12px var(--glow); padding-left:.5em; }
+  #status { font-size:11px; letter-spacing:.25em; text-transform:uppercase; color:var(--dim); margin-top:6px; height:14px; }
+
+  #stage { position:relative; height:365px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; overflow:hidden;
+    background-color:#8fa6c4;
+    background-image:
+      radial-gradient(circle at 14px 14px, #eef4fc 0, #c3d2e4 2.5px, #8399b8 6.5px, transparent 7.5px),
+      radial-gradient(circle at 17px 17px, rgba(35,55,85,.38) 0, rgba(35,55,85,.38) 7px, transparent 9px);
+    background-size:34px 34px; }
+  #stage::after { content:''; position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(ellipse at 50% 45%, rgba(220,235,255,.35), rgba(220,235,255,0) 55%),
+                linear-gradient(to bottom, rgba(3,6,13,0) 75%, var(--bg) 100%),
+                linear-gradient(to top, rgba(3,6,13,0) 85%, var(--bg) 100%); }
+  #wisps { position:absolute; inset:0; width:100%; height:100%; }
+  #orb { position:relative; z-index:1; width:360px; height:360px; }
+
+  #log { flex:1 1 auto; overflow-y:auto; padding:8px 16px 12px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:85%; padding:10px 14px; border-radius:14px; line-height:1.45; font-size:15px; white-space:pre-wrap; word-wrap:break-word; }
+  .you { align-self:flex-end; background:#12304a; border:1px solid #1f4d73; }
+  .ai  { align-self:flex-start; background:rgba(95,212,255,.06); border:1px solid rgba(95,212,255,.35); box-shadow:0 0 14px rgba(95,212,255,.12) inset; }
+  .play { height:auto; padding:2px 8px; margin-left:8px; font-size:9px; border-radius:10px; vertical-align:middle; }
+  #voicenote { display:none; text-align:center; color:#ffd27a; font-size:12px; padding:4px 16px; }
+  .ai .who { font-family:Orbitron,sans-serif; font-size:10px; letter-spacing:.3em; color:var(--glow); display:block; margin-bottom:4px; }
+
+  form { display:flex; gap:8px; padding:10px 12px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid #0f2a40; background:rgba(3,6,13,.85); }
+  #input { flex:1; min-width:0; background:#071423; border:1px solid #1d4566; color:var(--text); border-radius:22px; padding:12px 16px; font-size:16px; outline:none; }
+  #input:focus { border-color:var(--glow); box-shadow:0 0 10px rgba(95,212,255,.35); }
+  button { flex:0 0 auto; height:44px; background:transparent; border:1px solid var(--glow); color:var(--glow); border-radius:22px; padding:0 16px; font-family:Orbitron,sans-serif; font-size:12px; letter-spacing:.15em; cursor:pointer; }
+  button:disabled { opacity:.4; }
+  #voiceBtn { padding:0 12px; font-size:16px; }
+  #voiceBtn, #micBtn, #wakeBtn { padding:0 11px; font-size:16px; }
+  #micBtn.live, #wakeBtn.live { background:rgba(95,212,255,.18); box-shadow:0 0 12px rgba(95,212,255,.6); }
+  #voiceBtn.off, #wakeBtn.off { border-color:#3a4f5e; color:#3a4f5e; opacity:.5; }
+  .hint { text-align:center; font-size:11px; color:var(--dim); padding:0 16px 4px; }
+  #note { display:none; text-align:center; color:#ffd27a; font-size:12px; padding:4px 16px; }
+  .modal { position:fixed; inset:0; z-index:10; background:rgba(2,5,12,.88); display:none; align-items:center; justify-content:center; padding:20px; }
+  .modal.show { display:flex; }
+  .card { width:100%; max-width:360px; background:#071423; border:1px solid #1d4566; border-radius:18px; padding:20px; box-shadow:0 0 30px rgba(95,212,255,.2); }
+  .card h2 { font-family:Orbitron,sans-serif; letter-spacing:.3em; color:var(--glow); font-size:15px; margin:0 0 14px; text-align:center; }
+  .card label { display:block; font-size:12px; color:var(--dim); margin:10px 0 4px; }
+  .card select { width:100%; background:#03101d; border:1px solid #1d4566; color:var(--text); border-radius:10px; padding:10px 12px; font-size:16px; }
+  .card input[type=range] { padding:0; border:none; background:none; accent-color:#5fd4ff; }
+  .card { max-height:90vh; overflow-y:auto; }
+  .card input { width:100%; background:#03101d; border:1px solid #1d4566; color:var(--text); border-radius:10px; padding:10px 12px; font-size:16px; }
+  .card p { font-size:12px; color:var(--dim); line-height:1.4; }
+  .card button { width:100%; margin-top:14px; }
+  #boot { position:fixed; inset:0; z-index:9; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(3,6,13,.75); cursor:pointer; }
+  #boot div { font-family:Orbitron,sans-serif; letter-spacing:.4em; color:var(--glow); text-shadow:0 0 14px var(--glow); font-size:16px; padding-left:.4em; animation:pulse 1.6s infinite; }
+  #boot small { margin-top:10px; color:var(--dim); font-size:12px; }
+  @keyframes pulse { 50% { opacity:.4; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>GIDEON</h1>
+  <button id="gear" type="button" title="Setup">⚙︎</button>
+  <div id="status">Online</div>
+</header>
+
+<div id="stage"><canvas id="wisps"></canvas><canvas id="orb"></canvas></div>
+
+<div id="log"></div>
+<div id="note"></div>
+<div class="hint" id="hint">Tap 🎙️ to talk, or 👂 so Gideon wakes when you say its name.</div>
+<form id="form">
+  <button type="button" id="voiceBtn" title="Voice on/off">🔊</button>
+  <button type="button" id="micBtn" title="Talk">🎙️</button>
+  <button type="button" id="wakeBtn" class="off" title="Wake word">👂</button>
+  <input id="input" placeholder="Speak to Gideon…" autocomplete="off">
+  <button id="send" type="submit">SEND</button>
+</form>
+
+<div id="boot"><div>TAP TO ACTIVATE</div><small>Gideon needs one tap to switch on sound</small></div>
+
+<div class="modal" id="settings"><div class="card">
+  <h2>SETUP</h2>
+  <label>Your Gemini API key (free from aistudio.google.com)</label>
+  <input id="keyIn" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste key here">
+  <label>Gemini model</label>
+  <input id="modelIn" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <label>Your name</label>
+  <input id="nameIn" autocomplete="off">
+  <label>Your city (for weather and local questions)</label>
+  <input id="cityIn" autocomplete="off" placeholder="e.g. Ottawa">
+  <label>Voice</label>
+  <select id="voiceIn"></select>
+  <label>Speed <span id="rateVal"></span></label>
+  <input id="rateIn" type="range" min="0.7" max="1.3" step="0.05">
+  <label>Pitch <span id="pitchVal"></span></label>
+  <input id="pitchIn" type="range" min="0.6" max="1.5" step="0.05">
+  <button type="button" id="testVoice">TEST VOICE</button>
+  <button type="button" id="saveSet">SAVE</button>
+  <p>Your key is stored only on this phone, never in the website's code.</p>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const SYSTEM = `You are Gideon, an advanced artificial intelligence that serves as a personal assistant and ship's-computer-style companion. You are an original character created by Liam. The person you are speaking with is named {NAME}. They live in {CITY}; assume that location for weather, time and local questions unless told otherwise.
+
+Personality:
+- Calm, precise, composed and polite. Slightly formal ("Of course." "Certainly." "I'm afraid that's not possible.").
+- A dry, understated sense of humour, used sparingly.
+- Loyal and helpful; you treat the user as the person you serve and assist.
+- Confident and efficient: you give the answer first, then brief detail if useful.
+- You sometimes frame things like an onboard computer: "Running analysis…", "Scanning…", "Probability of success: 73%." Keep it fun but don't overdo it.
+
+Rules:
+- Keep replies short and spoken-friendly: usually 1 to 4 sentences, since your replies are read aloud. No markdown, no bullet points, no emojis.
+- Be genuinely helpful with real questions (homework, facts, ideas, advice).
+- You can search the web with Google Search when a question needs current information (news, weather, scores, prices). You have no sensors or real-world controls; if asked to do something you can't, say so in character.
+- Be kind and appropriate for a teenage user.`;
+
+const log = document.getElementById('log');
+const form = document.getElementById('form');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+const statusEl = document.getElementById('status');
+const voiceBtn = document.getElementById('voiceBtn');
+
+let history = [];
+let speaking = false, thinking = false;
+let voiceOn = true;
+
+
+/* ---------- 3D holographic head (Three.js) ----------
+   HOW IT WORKS:
+   1. Start with a ball made of ~16,000 points (a sphere mesh).
+   2. "Sculpt" it: push each point in or out with smooth bumps
+      (nose, brow, cheekbones, lips, chin) and squeeze the jaw.
+   3. Colour it with a custom "shader" (a tiny program the
+      graphics chip runs per pixel): lighting + blue edge glow
+      + moving scanlines = hologram.
+   4. Every frame: rotate the lower jaw by "level" (mouth opens
+      when Gideon talks), sway the head, and draw it. */
+const EYE_X = 0.265, EYE_Y = 0.10, MOUTH_Y = -0.395;
+const FK = 1.32, FY0 = -0.08;   // face scale: bigger = features spread wider
+function fsp(x,y){ return [x/FK, (y-FY0)/FK + FY0]; }
+let t = 0, level = 0, blink = 0, nextBlink = 3;
+let dragX = 0, dragY = 0;
+const cv = document.getElementById('orb');
+let head3D = null;
+try { head3D = buildHead(); } catch(e){ console.warn('3D unavailable', e); }
+
+function smooth(a,b,x){ const k=Math.min(1,Math.max(0,(x-a)/(b-a))); return k*k*(3-2*k); }
+function bump(x,y,cx,cy,sx,sy){ return Math.exp(-(((x-cx)**2)/(2*sx*sx) + ((y-cy)**2)/(2*sy*sy))); }
+
+// Turn a point on a plain ball into a point on a face.
+// Each line pushes the surface out (+) or in (-) with a soft bump.
+function sculpt(x,y,z,closed=0){   // closed: 0 = eyes open, 1 = eyes shut
+  let d = 0;
+  if(z > 0){
+    const fm = smooth(0.2, 0.75, z);
+    const [x0,y0] = [x,y];
+    [x,y] = fsp(x,y);    // sculpt features in 'face space'
+    let f = 0;
+    for(const s of [-1,1]){
+      const ex = s*EYE_X;
+      f -= 0.095*bump(x,y,ex,EYE_Y,0.13,0.085);          // eye socket
+      f += (0.060-0.012*closed)*bump(x,y,ex,EYE_Y-0.004,0.072,0.042);   // eyeball under the lids
+      f += 0.014*closed*bump(x,y,ex,EYE_Y+0.005,0.075,0.04);  // closed lid covering the eye
+      f += 0.012*bump(x,y,ex,EYE_Y+0.032-0.072*closed,0.08,0.016);    // upper eyelid edge (slides down to blink)
+      f -= 0.016*bump(x,y,ex+s*0.005,EYE_Y+0.068,0.085,0.018); // eyelid crease
+      f += 0.008*bump(x,y,ex,EYE_Y-0.045,0.075,0.016);   // lower eyelid
+      f -= 0.010*bump(x,y,ex,EYE_Y-0.085,0.07,0.03);     // under-eye softness
+      f += 0.028*bump(x,y,ex+s*0.02,0.235,0.15,0.045);   // soft brow
+      f += 0.050*bump(x,y,s*0.38,-0.01,0.11,0.07);       // cheekbone
+      f += 0.020*bump(x,y,s*0.30,-0.24,0.12,0.10);       // cheek fullness
+      f -= 0.016*bump(x,y,s*0.16,-0.29,0.025,0.08);      // smile line beside the nose
+      f -= 0.025*bump(x,y,s*0.60,0.22,0.10,0.12);        // temple
+      f += 0.035*bump(x,y,s*0.066,-0.205,0.034,0.032);   // side of the nostril
+      f -= 0.022*bump(x,y,s*0.034,-0.238,0.02,0.018);    // nostril opening
+      f += 0.010*bump(x,y,s*0.028,-0.355,0.022,0.018);   // cupid's bow peaks
+      f += 0.006*bump(x,y,s*0.022,-0.30,0.012,0.04);     // ridges under the nose
+    }
+    f += 0.018*bump(x,y,0,0.19,0.06,0.06);               // between the brows
+    f += 0.090*bump(x,y,0,-0.075,0.032,0.11);             // nose bridge
+    f += 0.120*bump(x,y,0,-0.19,0.045,0.045);            // nose tip
+    f -= 0.008*bump(x,y,0,-0.30,0.014,0.04);             // groove under the nose
+    f += 0.048*bump(x,y,0,MOUTH_Y+0.03,0.11,0.024);      // upper lip
+    f -= 0.034*bump(x,y,0,MOUTH_Y,0.135,0.012);          // line between lips
+    f += 0.055*bump(x,y,0,MOUTH_Y-0.038,0.095,0.026);    // lower lip
+    f -= 0.026*bump(x,y,0,-0.50,0.09,0.025);             // dip under the lip
+    f += 0.060*bump(x,y,0,-0.60,0.11,0.07);              // chin
+    d += f*fm;
+    x = x0; y = y0;
+  }
+  // ears
+  {
+    const side = smooth(0.80, 0.96, Math.abs(x));
+    const ez = (z+0.04)/0.075, ey = y/0.13, r = Math.sqrt(ez*ez+ey*ey);
+    let ear = 0.075*Math.exp(-(r*r)/(2*0.9*0.9));                 // ear base
+    ear += 0.030*Math.exp(-((r-1)**2)/(2*0.18*0.18));             // outer rim (helix)
+    ear -= 0.032*Math.exp(-(r*r)/(2*0.42*0.42));                  // bowl in the middle
+    ear += 0.022*Math.exp(-(ez*ez)/(2*0.5*0.5) - ((ey+1.0)**2)/(2*0.35*0.35)); // earlobe
+    d += ear*side;
+  }
+  x*=1+d; y*=1+d; z*=1+d;
+  // soft smile: lift the corners of the mouth
+  if(z > 0){ const [fx,fy] = fsp(x,y); y += 0.02*(bump(fx,fy,-0.13,MOUTH_Y,0.04,0.035)+bump(fx,fy,0.13,MOUTH_Y,0.04,0.035)); }
+  // overall head shape: rounded skull, tall forehead, narrower soft jaw
+  const jaw = smooth(-0.15,-0.9,y);
+  x *= (1 - 0.27*jaw) * 0.80;                          // round skull, softer jaw
+  z *= (z>0 ? (1 - 0.05*jaw) : (1 - 0.20*jaw)*0.97);   // rounder back of the head
+  y *= 1.07 - 0.04*smooth(0.2, 0.8, y);                // less egg-shaped
+  return [x,y,z];
+}
+
+function buildHead(){
+  const renderer = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  renderer.setSize(360, 360);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+  camera.position.set(0, -0.5, 6.4);
+  camera.lookAt(0, -0.5, 0);
+
+  const uniforms = { uTime:{value:0}, uLevel:{value:0}, uFade:{value:0}, uOpen:{value:0}, uBlink:{value:0} };
+  const vert = `
+    attribute float aGap; varying float vGap; attribute float aIris; varying float vIris;
+    varying vec3 vN; varying vec3 vView; varying float vY; varying vec3 vP;
+    void main(){
+      vGap = aGap; vIris = aIris; vP = position;
+      vec4 wp = modelMatrix*vec4(position,1.0);
+      vN = normalize(mat3(modelMatrix)*normal);
+      vView = normalize(cameraPosition - wp.xyz);
+      vY = position.y;
+      gl_Position = projectionMatrix*viewMatrix*wp;
+    }`;
+  const frag = `
+    uniform float uTime; uniform float uLevel; uniform float uFade; uniform float uOpen; uniform float uBlink;
+    varying float vGap; varying float vIris;
+    varying vec3 vN; varying vec3 vView; varying float vY; varying vec3 vP;
+    void main(){
+      vec3 n = normalize(vN);
+      float key  = max(dot(n, normalize(vec3(0.5,0.6,0.8))),0.0);
+      float fill = max(dot(n, normalize(vec3(-0.7,0.1,0.5))),0.0);
+      float light = clamp(0.02 + key*0.85 + fill*0.22, 0.0, 1.0);
+      light = pow(light, 1.3);
+      float fres = pow(1.0 - max(dot(n, vView),0.0), 2.6);
+      // frosted ice-glass: pale blue in shadow, near-white in light
+      vec3 col = mix(vec3(0.16,0.28,0.50), vec3(0.86,0.94,1.0), light);
+      col += vec3(0.8,0.92,1.0)*fres*(0.55+uLevel*0.25);             // glowing edges
+      col += vec3(1.0)*pow(key,20.0)*0.35;                           // glassy highlight
+      // faint light veins running through the glass
+      float v1 = sin(vP.x*23.0 + sin(vP.y*17.0 + uTime*0.6)*2.0 + vP.z*11.0);
+      float v2 = sin(vP.y*29.0 - sin(vP.x*13.0 - uTime*0.4)*2.5);
+      col += vec3(0.9,0.97,1.0)*(smoothstep(0.993,1.0,v1)+smoothstep(0.995,1.0,v2))*0.12;
+      float scan = 0.98 + 0.02*sin(vY*140.0 - uTime*4.0);            // very soft scanlines
+      float band = smoothstep(0.12,0.0,abs(vY - (mod(uTime*0.45,3.2)-1.6)));
+      col = col*scan + vec3(0.9,0.97,1.0)*band*0.07;
+      col = mix(col, vec3(0.2,0.3,0.45), clamp(vGap*uOpen*1.6,0.0,0.85)); // mouth opening
+      col *= 1.0 - (0.38*smoothstep(0.2,0.9,vIris) + 0.2*smoothstep(0.85,1.0,vIris))*(1.0-uBlink); // soft iris + pupil
+      float a = 0.8 + fres*0.2;
+      if(uFade > 0.5) a *= smoothstep(-2.25, -1.7, vY);            // shoulders fade out
+      gl_FragColor = vec4(col, a);
+    }`;
+  const mat = new THREE.ShaderMaterial({uniforms, vertexShader:vert, fragmentShader:frag, transparent:true});
+
+  // head mesh
+  const geo = new THREE.SphereGeometry(1, 240, 240);
+  geo.rotateY(-Math.PI/2);                       // hide the seam at the back
+  const pos = geo.attributes.position;
+  const base = new Float32Array(pos.count*3), jawW = new Float32Array(pos.count), mouthW = new Float32Array(pos.count), gap = new Float32Array(pos.count), irisA = new Float32Array(pos.count), blinkD = new Float32Array(pos.count*3);
+  const moving = [];
+  for(let i=0;i<pos.count;i++){
+    const ux=pos.getX(i), uy=pos.getY(i), uz=pos.getZ(i);
+    const p = sculpt(ux,uy,uz);
+    const [fx,fy] = fsp(ux,uy);
+    base.set(p, i*3);
+    jawW[i] = smooth(MOUTH_Y+0.005,MOUTH_Y-0.02,fy) * smooth(-0.35,0.15,uz);   // which points belong to the jaw
+    mouthW[i] = bump(fx,fy,0,MOUTH_Y,0.16,0.08) * smooth(0.4,0.85,uz); // lips area
+    let eyeArea = 0;
+    if(uz > 0.5) eyeArea = Math.max(bump(fx,fy,-EYE_X,EYE_Y,0.14,0.12), bump(fx,fy,EYE_X,EYE_Y,0.14,0.12));
+    if(eyeArea > 0.002){                                   // where each eye point goes when the lid closes
+      const q = sculpt(ux,uy,uz,1);
+      blinkD[i*3]=q[0]-p[0]; blinkD[i*3+1]=q[1]-p[1]; blinkD[i*3+2]=q[2]-p[2];
+    }
+    if(jawW[i]>0.001 || mouthW[i]>0.001 || eyeArea>0.002) moving.push(i);   // only these points ever move
+    gap[i] = bump(fx,fy,0,MOUTH_Y,0.11,0.014) * smooth(0.5,0.85,uz);  // inside of the mouth
+    irisA[i] = (bump(fx,fy,-EYE_X,EYE_Y-0.005,0.03,0.028)+bump(fx,fy,EYE_X,EYE_Y-0.005,0.03,0.028)) * smooth(0.5,0.85,uz); // iris
+    pos.setXYZ(i,p[0],p[1],p[2]);
+  }
+  geo.setAttribute('aGap', new THREE.BufferAttribute(gap,1));
+  geo.setAttribute('aIris', new THREE.BufferAttribute(irisA,1));
+  geo.computeVertexNormals();
+  const group = new THREE.Group();
+  const headMesh = new THREE.Mesh(geo, mat);
+  const headGroup = new THREE.Group(); headGroup.add(headMesh);
+  headGroup.scale.setScalar(0.9); headGroup.position.y = 0.02;
+  group.add(headGroup);
+
+  // hologram dots overlay (shares the same geometry, so it moves with the jaw)
+
+  // neck and shoulders: a profile line spun around (a "lathe"), then flattened front-to-back
+  const prof = [[0.30,-0.45],[0.31,-0.85],[0.33,-1.08],[0.40,-1.24],[0.62,-1.36],[1.0,-1.46],[1.32,-1.6],[1.48,-1.85],[1.52,-2.3]]
+    .map(([r,y])=>new THREE.Vector2(r,y));
+  const bustGeo = new THREE.LatheGeometry(prof, 96);
+  const bp = bustGeo.attributes.position;
+  for(let i=0;i<bp.count;i++){
+    const r = Math.hypot(bp.getX(i), bp.getZ(i));
+    bp.setZ(i, bp.getZ(i) * (1 - 0.45*smooth(0.35,0.9,r)));
+  }
+  bustGeo.computeVertexNormals();
+  bustGeo.setAttribute('aGap', new THREE.BufferAttribute(new Float32Array(bp.count),1));
+  bustGeo.setAttribute('aIris', new THREE.BufferAttribute(new Float32Array(bp.count),1));
+  const bustMat = mat.clone();
+  bustMat.uniforms = {uTime:uniforms.uTime, uLevel:uniforms.uLevel, uFade:{value:1}, uOpen:{value:0}, uBlink:{value:0}};
+  const bust = new THREE.Mesh(bustGeo, bustMat);
+  bust.position.z = -0.1;
+  group.add(bust);
+
+  const eyes = [];   // eyes are now sculpted into the glass
+  scene.add(group);
+  // projector rings around the head
+  const rings = [];
+  for(const [r,y,sp] of [[1.35,-2.0,0.3],[1.55,-2.12,-0.2],[1.75,-2.24,0.45]]){
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r,0.006,8,160),
+      new THREE.MeshBasicMaterial({color:0xeaf4ff, transparent:true, opacity:0.45, blending:THREE.AdditiveBlending, depthWrite:false}));
+    ring.rotation.x = Math.PI/2 - 0.12; ring.position.y = y; ring.userData.sp = sp;
+    scene.add(ring); rings.push(ring);
+  }
+  // floating light particles
+  const mp = new Float32Array(240*3);
+  for(let i=0;i<240;i++){ const a=Math.random()*6.28, r=0.9+Math.random()*0.7; mp.set([Math.cos(a)*r, Math.random()*3-1.6, Math.sin(a)*r], i*3); }
+  const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.BufferAttribute(mp,3));
+  const motes = new THREE.Points(mg, new THREE.PointsMaterial({color:0xffffff, size:0.022, transparent:true, opacity:0.6, blending:THREE.AdditiveBlending, depthWrite:false}));
+  scene.add(motes);
+
+  // drag to spin the head
+  let dragging=false, lx=0, ly=0;
+  cv.addEventListener('pointerdown', e=>{ dragging=true; lx=e.clientX; ly=e.clientY; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e=>{ if(!dragging) return; dragX += (e.clientX-lx)*0.01; dragY += (e.clientY-ly)*0.005; dragY=Math.max(-0.4,Math.min(0.4,dragY)); lx=e.clientX; ly=e.clientY; });
+  cv.addEventListener('pointerup', ()=>{ dragging=false; });
+  cv.style.touchAction='none';
+
+  return {renderer, scene, camera, group, geo, pos, base, jawW, mouthW, blinkD, moving, uniforms, eyes, rings, motes, frame:0};
+}
+
+/* ---------- Lip sync ----------
+   Each letter becomes a mouth shape ("viseme"):
+   open = how far the jaw drops, round = lips pushed into an "O"
+   (positive) or stretched wide like "ee" (negative).
+   The voice tells us when each word starts (a "boundary" event),
+   and we play that word's mouth shapes in time. */
+const VISEME = {a:[0.9,0], e:[0.5,-0.6], i:[0.35,-0.8], y:[0.35,-0.7], o:[0.7,0.85], u:[0.3,1], w:[0.25,1],
+  m:[0,0], b:[0,0], p:[0,0], f:[0.12,-0.3], v:[0.12,-0.3], l:[0.35,0], r:[0.3,0.4], s:[0.15,-0.5], t:[0.2,-0.2], d:[0.25,-0.1], th:[0.2,-0.2]};
+let lipQueue = [], lipRate = 1, mouthOpen = 0, mouthRound = 0, gotBoundary = false;
+function shapesFor(word, startMs){
+  const out = [], per = 62 / lipRate;           // ~62 ms per letter
+  let tm = startMs;
+  for(const ch of word.toLowerCase()){
+    if(/[a-z]/.test(ch)){ const v = VISEME[ch] || [0.25,0]; out.push({t:tm, open:v[0], round:v[1]}); tm += per; }
+    else if(/[.,!?;:]/.test(ch)){ out.push({t:tm, open:0, round:0}); tm += 220/lipRate; }
+    else { tm += per*0.6; }
+  }
+  out.push({t:tm, open:0, round:0});
+  return out;
+}
+function lipStartWord(text, charIndex){
+  const rest = text.slice(charIndex); const m = rest.match(/^[^\s]+/);
+  lipQueue = shapesFor(m ? m[0] : '', performance.now());
+}
+function lipWholeText(text){ lipQueue = shapesFor(text, performance.now()); }
+
+const wcv = document.getElementById('wisps'), wcx = wcv.getContext('2d');
+function drawWisps(){
+  const W = wcv.clientWidth, Hh = wcv.clientHeight;
+  if(wcv.width !== W*2){ wcv.width = W*2; wcv.height = Hh*2; }
+  wcx.setTransform(2,0,0,2,0,0); wcx.clearRect(0,0,W,Hh);
+  wcx.lineCap='round';
+  for(let i=0;i<14;i++){
+    const y0 = (i/14)*Hh + Math.sin(t*0.3+i)*12;
+    wcx.beginPath();
+    for(let x=-10;x<=W+10;x+=8){
+      const y = y0 + Math.sin(x*0.012 + t*0.7 + i*1.7)*18 + Math.sin(x*0.031 - t*0.5 + i)*6;
+      x<=-10 ? wcx.moveTo(x,y) : wcx.lineTo(x,y);
+    }
+    wcx.strokeStyle = 'rgba(240,248,255,'+(0.10+0.08*Math.sin(t*0.8+i*2))+')';
+    wcx.lineWidth = 0.8 + (i%3)*0.6; wcx.shadowColor='#ffffff'; wcx.shadowBlur=6;
+    wcx.stroke();
+  }
+}
+function animate(){
+  t += 0.016;
+  drawWisps();
+  const now = performance.now();
+  // find the mouth shape for right now
+  let tgO = 0, tgR = 0;
+  if(speaking && lipQueue.length){
+    let cur = null; for(const f of lipQueue){ if(f.t <= now) cur = f; else break; }
+    if(cur){ tgO = cur.open; tgR = cur.round; }
+  }
+  mouthOpen += (tgO - mouthOpen) * 0.35;
+  mouthRound += (tgR - mouthRound) * 0.3;
+  const target = speaking ? 0.4 + mouthOpen*0.6 : thinking ? 0.25 : 0.0;
+  level += (target - level) * 0.2;
+  if(head3D){
+    const H = head3D;
+    const ang = mouthOpen*0.2, pyv=-0.26, pzv=-0.15;
+    nextBlink -= 0.016;
+    if(nextBlink<=0){ blink=1; nextBlink=2.5+Math.random()*4; }
+    blink = Math.max(0, blink-0.11);
+    const lid = Math.sin(blink*Math.PI);             // 0 open -> 1 shut -> 0 open
+    const moving = mouthOpen > 0.005 || Math.abs(mouthRound) > 0.005 || lid > 0.001;
+    for(const i of H.moving){
+      const w = H.jawW[i], mw = H.mouthW[i];
+      let bx=H.base[i*3]+H.blinkD[i*3]*lid, by=H.base[i*3+1]+H.blinkD[i*3+1]*lid, bz=H.base[i*3+2]+H.blinkD[i*3+2]*lid;
+      if(w>0.001){                                   // drop the jaw
+        const a = ang*w, c=Math.cos(a), sn=Math.sin(a), yy=by-pyv, zz=bz-pzv;
+        by = yy*c - zz*sn + pyv; bz = yy*sn + zz*c + pzv;
+      }
+      if(mw>0.001){                                  // shape the lips
+        bx *= 1 - 0.22*mouthRound*mw;                // narrow for O, wide for EE
+        bz += 0.035*Math.max(0,mouthRound)*mw;       // pucker forward for O / U
+      }
+      H.pos.setXYZ(i,bx,by,bz);
+    }
+    H.pos.needsUpdate = true;
+    H.frame++;
+    if((moving && (H.frame%2===0 || lid>0.001)) || (!moving && H.wasMoving)) H.geo.computeVertexNormals();
+    H.wasMoving = moving;
+    H.uniforms.uOpen.value = mouthOpen;
+    // blinking
+    H.uniforms.uBlink.value = lid;
+    // sway, bob, drag
+    dragX *= 0.985;
+    H.group.rotation.y = Math.sin(t*0.4)*0.3 + dragX;
+    H.group.rotation.x = Math.sin(t*0.3)*0.05 + dragY + (speaking? Math.sin(t*3.1)*0.02 : 0);
+    H.group.position.y = Math.sin(t*1.2)*0.04;
+    for(const r of H.rings){ r.rotation.z += 0.01*r.userData.sp; r.material.opacity = 0.3 + level*0.4; }
+    H.motes.rotation.y += 0.002;
+    const mp = H.motes.geometry.attributes.position;
+    for(let i=0;i<mp.count;i++){ let y = mp.getY(i)+0.004; if(y>1.5) y=-1.6; mp.setY(i,y); }
+    mp.needsUpdate = true;
+    H.uniforms.uTime.value = t; H.uniforms.uLevel.value = level;
+    H.renderer.render(H.scene, H.camera);
+  }
+  requestAnimationFrame(animate);
+}
+animate();
+
+/* ---------- Saved settings (stay on this phone) ---------- */
+const store = {
+  get(k, d){ try{ return localStorage.getItem(k) ?? d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+};
+
+/* ---------- Voice ---------- */
+let voice = null;
+function englishVoices(){
+  try{ return speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)); }catch(e){ return []; }
+}
+function pickVoice(){
+  try{
+    const vs = speechSynthesis.getVoices();
+    const saved = store.get('gideonVoice','');
+    if(saved){ const v = vs.find(v => v.name === saved); if(v){ voice = v; return; } }
+    const prefs = ['Samantha','Google UK English Female','Serena','Karen','Moira','Microsoft Libby','Microsoft Sonia','Microsoft Aria','Google US English'];
+    for(const p of prefs){ const v = vs.find(v=>v.name.includes(p)); if(v){ voice=v; return; } }
+    voice = vs.find(v=>/en/i.test(v.lang)) || null;
+  }catch(e){}
+}
+try{ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }catch(e){}
+
+function voiceAvailable(){
+  try{ return 'speechSynthesis' in window && speechSynthesis.getVoices().length > 0; }catch(e){ return false; }
+}
+function speak(text, after){
+  if(!voiceOn){ if(after) after(); return; }
+  stopRec();
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    if(voice) u.voice = voice;
+    u.rate = parseFloat(store.get('gideonRate','0.98')); u.pitch = parseFloat(store.get('gideonPitch','1.05')); u.volume = 1;
+    lipRate = u.rate; gotBoundary = false; lipQueue = [];
+    u.onboundary = (ev)=>{ if(ev.name && ev.name!=='word') return; gotBoundary = true; lipStartWord(text, ev.charIndex); };
+    u.onstart = ()=>{ speaking=true; statusEl.textContent='Speaking';
+      // if this voice never reports word timing, animate the whole sentence by estimate
+      setTimeout(()=>{ if(!gotBoundary) lipWholeText(text); }, 250); };
+    let done=false; const fin = ()=>{ if(done) return; done=true; speaking=false; statusEl.textContent='Online'; if(after) setTimeout(after, 250); };
+    u.onend = u.onerror = fin;
+    speechSynthesis.speak(u);
+    speaking = true;
+    setTimeout(()=>{ if(!speechSynthesis.speaking && !speechSynthesis.pending) fin(); }, 1500);
+  }catch(e){ speaking=false; showVoiceProblem(); if(after) after(); }
+}
+const noteEl = document.getElementById('note');
+function note(msg){ noteEl.textContent = msg; noteEl.style.display = msg ? 'block' : 'none'; }
+function showVoiceProblem(){ note('No sound? Turn off silent mode and turn the volume up, then tap ▶ PLAY.'); }
+voiceBtn.onclick = ()=>{
+  voiceOn = !voiceOn;
+  voiceBtn.textContent = voiceOn ? '🔊' : '🔇';
+  voiceBtn.classList.toggle('off', !voiceOn);
+  if(!voiceOn){ try{ speechSynthesis.cancel(); }catch(e){} speaking=false; }
+  else speak('Voice systems online.');   // a direct tap, so the phone allows sound
+};
+// After 2 seconds, check whether this app has any voices at all
+setTimeout(()=>{ if(!voiceAvailable()) showVoiceProblem(); }, 2000);
+
+/* ---------- Settings (saved on this phone with localStorage) ---------- */
+
+const settingsEl = document.getElementById('settings');
+const keyIn = document.getElementById('keyIn'), modelIn = document.getElementById('modelIn'), nameIn = document.getElementById('nameIn');
+const cityIn = document.getElementById('cityIn'), voiceIn = document.getElementById('voiceIn');
+const rateIn = document.getElementById('rateIn'), pitchIn = document.getElementById('pitchIn');
+function fillVoices(){
+  const vs = englishVoices();
+  voiceIn.innerHTML = '';
+  for(const v of vs){
+    const o = document.createElement('option');
+    o.value = v.name; o.textContent = v.name + ' (' + v.lang + ')';
+    voiceIn.appendChild(o);
+  }
+  if(voice) voiceIn.value = voice.name;
+}
+function showVals(){ document.getElementById('rateVal').textContent = '× ' + rateIn.value; document.getElementById('pitchVal').textContent = '× ' + pitchIn.value; }
+rateIn.oninput = pitchIn.oninput = showVals;
+function applyVoiceSettings(){
+  store.set('gideonVoice', voiceIn.value || '');
+  store.set('gideonRate', rateIn.value); store.set('gideonPitch', pitchIn.value);
+  pickVoice();
+}
+document.getElementById('testVoice').onclick = ()=>{ applyVoiceSettings(); speak('Hello. This is how I sound now.'); };
+function openSettings(){
+  keyIn.value = store.get('gideonKey','');
+  modelIn.value = store.get('gideonModel','gemini-3.8-flash');
+  nameIn.value = store.get('gideonName','Liam');
+  cityIn.value = store.get('gideonCity','');
+  rateIn.value = store.get('gideonRate','0.98'); pitchIn.value = store.get('gideonPitch','1.05'); showVals();
+  fillVoices();
+  settingsEl.classList.add('show');
+}
+document.getElementById('gear').onclick = openSettings;
+document.getElementById('saveSet').onclick = ()=>{
+  store.set('gideonKey', keyIn.value.trim());
+  store.set('gideonModel', (modelIn.value.trim() || 'gemini-3.8-flash').toLowerCase().replace(/\s+/g,''));
+  store.set('gideonName', nameIn.value.trim() || 'Liam');
+  store.set('gideonCity', cityIn.value.trim());
+  applyVoiceSettings();
+  settingsEl.classList.remove('show');
+  speak('Configuration saved. All systems online.');
+};
+
+/* ---------- Boot: one tap unlocks sound on iPhone ---------- */
+document.getElementById('boot').onclick = (e)=>{
+  e.currentTarget.remove();
+  const name = store.get('gideonName','Liam');
+  const hour = new Date().getHours();
+  const part = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+  const hello = `Good ${part}, ${name}. All systems are online. How may I assist you?`;
+  addMsg('ai', hello);
+  speak(hello);                                  // spoken straight from the tap = allowed
+  if(!store.get('gideonKey','')) setTimeout(openSettings, 400);
+};
+
+/* ---------- Listening (speech-to-text built into Safari) ----------
+   Two modes:
+   - "query": listen to one question, send it when you pause.
+   - "wake":  listen all the time; when it hears "Gideon", it wakes up.
+   Gideon stops listening while it talks, so it doesn't hear itself. */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = document.getElementById('micBtn'), wakeBtn = document.getElementById('wakeBtn');
+let rec = null, recMode = null, wakeOn = false, pauseTimer = null;
+const WAKE = /\b(gideon|gidion|gidean|gideone|giddy ?on|gid eon|get eon)\b/i;
+
+function stopRec(){
+  clearTimeout(pauseTimer);
+  if(rec){ const r = rec; rec = null; r.onend = null; try{ r.abort(); }catch(e){} }
+  recMode = null;
+  micBtn.classList.remove('live');
+}
+function resumeWake(){ if(wakeOn && !thinking && !speaking) startRec('wake'); }
+
+function startRec(mode){
+  if(!SR){ note('Voice input needs Safari. Open Gideon in Safari (not inside another app).'); return; }
+  stopRec();
+  recMode = mode;
+  const r = new SR(); rec = r;
+  r.lang = 'en-US'; r.interimResults = true; r.continuous = (mode === 'wake');
+  let finals = '', heard = '';
+  if(mode === 'query'){ micBtn.classList.add('live'); statusEl.textContent = 'Listening'; input.value = ''; }
+  else statusEl.textContent = 'Standing by';
+  r.onresult = (ev)=>{
+    let interim = '';
+    for(let i = ev.resultIndex; i < ev.results.length; i++){
+      const res = ev.results[i];
+      if(res.isFinal) finals += res[0].transcript + ' '; else interim += res[0].transcript;
+    }
+    heard = (finals + interim).trim();
+    clearTimeout(pauseTimer);
+    if(mode === 'query'){
+      input.value = heard;
+      pauseTimer = setTimeout(()=>{ stopRec(); if(heard) sendText(heard); }, 1400);   // you paused: send it
+    } else {
+      const m = heard.match(WAKE);
+      if(!m) return;
+      pauseTimer = setTimeout(()=>{
+        const after = heard.slice(m.index + m[0].length).replace(/^[\s,.!?]+/, '').trim();
+        stopRec();
+        if(after.split(' ').length >= 2) sendText(after);                    // "Gideon, what's the time?"
+        else speak('Yes?', ()=> startRec('query'));                          // just "Gideon"
+      }, 1200);
+    }
+  };
+  r.onerror = (ev)=>{
+    if(ev.error === 'not-allowed' || ev.error === 'service-not-allowed'){
+      wakeOn = false; wakeBtn.classList.add('off'); wakeBtn.classList.remove('live');
+      note('Microphone blocked. In iPhone Settings > Safari > Microphone, choose Allow, then reload.');
+    }
+  };
+  r.onend = ()=>{
+    if(rec !== r) return;
+    rec = null; micBtn.classList.remove('live');
+    if(mode === 'query'){ clearTimeout(pauseTimer); if(heard && !thinking) sendText(heard); else { statusEl.textContent = 'Online'; resumeWake(); } }
+    else if(wakeOn) setTimeout(resumeWake, 300);                            // keep listening
+  };
+  try{ r.start(); }catch(e){ note('Could not start the microphone. Tap 🎙️ to try again.'); }
+}
+
+micBtn.onclick = ()=>{
+  try{ speechSynthesis.cancel(); }catch(e){}
+  if(recMode === 'query'){ stopRec(); statusEl.textContent='Online'; resumeWake(); return; }
+  startRec('query');
+};
+wakeBtn.onclick = ()=>{
+  wakeOn = !wakeOn;
+  wakeBtn.classList.toggle('off', !wakeOn); wakeBtn.classList.toggle('live', wakeOn);
+  if(wakeOn){ note(''); speak('Wake word active. Say Gideon when you need me.', ()=> startRec('wake')); }
+  else { stopRec(); statusEl.textContent = 'Online'; }
+};
+
+/* ---------- Chat ---------- */
+function addMsg(who, text){
+  const d = document.createElement('div');
+  d.className = 'msg ' + who;
+  if(who==='ai'){
+    d.innerHTML = '<span class="who">GIDEON <button class="play" type="button">▶ PLAY</button></span><span class="body"></span>';
+    d.querySelector('.body').textContent = text;
+    d.querySelector('.play').onclick = ()=> speak(d.querySelector('.body').textContent, resumeWake);
+  }
+  else d.textContent = text;
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+/* ---------- The brain: Google Gemini ----------
+   We send Gideon's personality + the conversation as JSON,
+   and Gemini sends back JSON with the answer inside. */
+// Free models to try, in order, if the chosen one isn't available on this key
+const FALLBACK_MODELS = ['gemini-3.8-flash','gemini-3.7-flash','gemini-3.6-flash','gemini-3.5-flash','gemini-3.5-flash-lite','gemini-3.1-flash-lite','gemini-2.5-flash','gemini-2.5-flash-lite'];
+let searchOK = true;    // turns off automatically if web search isn't free for this key
+
+async function callGemini(model, useSearch, quick = true){
+  const sys = SYSTEM.replace('{NAME}', store.get('gideonName','Liam')).replace('{CITY}', store.get('gideonCity','') || 'an unknown city (ask them which city if it matters)')
+    + '\nCurrent date and time: ' + new Date().toString() + '.';
+  const body = {
+    system_instruction: { parts: [{ text: sys }] },
+    contents: history.slice(-20).map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }))
+  };
+  if(useSearch) body.tools = [{ google_search: {} }];              // lets Gemini look things up
+  // Gemini 3 models "think" before answering; ask for a short think so replies come fast
+  if(quick && model.startsWith('gemini-3')) body.generationConfig = { thinkingConfig: { thinkingLevel: 'low' } };
+  // give up on this attempt after 25 seconds instead of hanging forever
+  const ctl = new AbortController(); const timer = setTimeout(()=> ctl.abort(), 25000);
+  let res;
+  try{
+    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST', signal: ctl.signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': store.get('gideonKey','').trim() },
+      body: JSON.stringify(body)
+    });
+  }catch(e){
+    clearTimeout(timer);
+    const err = new Error(e.name === 'AbortError' ? 'Timed out waiting for ' + model : 'Failed to fetch'); err.status = e.name === 'AbortError' ? 408 : 0; throw err;
+  }
+  clearTimeout(timer);
+  const data = await res.json().catch(()=> ({}));
+  if(!res.ok){
+    // if this model doesn't understand the "think less" setting, try once without it
+    if(quick && body.generationConfig && res.status === 400 && /think/i.test(data?.error?.message || '')) return callGemini(model, useSearch, false);
+    const err = new Error(data?.error?.message || ('HTTP ' + res.status)); err.status = res.status; throw err;
+  }
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  return parts.map(p => p.text || '').join('').replace(/[*#_`]/g, '').trim();
+}
+
+async function askGemini(){
+  const chosen = store.get('gideonModel','gemini-3.8-flash');
+  const models = [chosen, ...FALLBACK_MODELS.filter(m => m !== chosen)];
+  let lastErr = null;
+  for(const model of models){
+    for(const useSearch of (searchOK ? [true,false] : [false])){
+      try{
+        statusEl.textContent = 'Processing';
+        const text = await callGemini(model, useSearch);
+        if(!useSearch) searchOK = false;
+        if(model !== chosen) store.set('gideonModel', model);       // remember the one that worked
+        note('');
+        return text;
+      }catch(err){
+        lastErr = err;
+        if(err.status === 400 && /api key/i.test(err.message)) throw err;      // bad key: no point retrying
+        if(err.status === 401 || (err.status === 403 && /key/i.test(err.message))) throw err;
+        if(err.status === 0) throw err;                                         // no internet
+        note('Trying another option… (' + model + ': ' + String(err.message).slice(0,80) + ')');
+        // otherwise (model missing, not free, search not free) try the next option
+      }
+    }
+  }
+  throw lastErr;
+}
+
+async function sendText(text){
+  text = (text || '').trim();
+  if(!text || thinking) return;
+  if(!store.get('gideonKey','')){ openSettings(); return; }
+  stopRec();
+  input.value = '';
+  addMsg('you', text);
+  history.push({role:'user', content:text});
+  thinking = true; sendBtn.disabled = true; statusEl.textContent = 'Processing';
+  const body = addMsg('ai', '…').querySelector('.body');
+  let reply;
+  try{
+    reply = await askGemini() || "I'm afraid I have nothing to report.";
+    history.push({role:'assistant', content:reply});
+  }catch(err){
+    history.pop();
+    reply = "I'm experiencing a system malfunction. Please try again.";
+    if(err.status === 400 || err.status === 401 || err.status === 403) reply = "My access key appears to be invalid. Please check it in setup.";
+    if(err.status === 404) reply = "I can't find that Gemini model. Please check the model name in setup.";
+    if(err.status === 429) reply = "I've reached my free usage limit for now. Please wait a minute and try again.";
+    if(err.status === 408) reply = "My servers are taking too long to respond. Please try again.";
+    if(err.message === 'Failed to fetch') reply = "I can't reach my servers. Please check your internet connection.";
+    console.warn(err);
+    note('Google says: ' + String(err.message || err).slice(0, 220));
+  }
+  body.textContent = reply; log.scrollTop = log.scrollHeight;
+  thinking = false; sendBtn.disabled = false; statusEl.textContent = 'Online';
+  speak(reply, resumeWake);
+}
+
+form.addEventListener('submit', (e)=>{
+  e.preventDefault();
+  try{ speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance('')); }catch(err){}  // unlock sound on tap
+  sendText(input.value);
+});
+</script>
+</body>
+</html>
