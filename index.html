@@ -56,6 +56,11 @@
   #micBtn.live, #wakeBtn.live { background:rgba(95,212,255,.18); box-shadow:0 0 12px rgba(95,212,255,.6); }
   #voiceBtn.off, #wakeBtn.off { border-color:#3a4f5e; color:#3a4f5e; opacity:.5; }
   .hint { text-align:center; font-size:11px; color:var(--dim); padding:0 16px 4px; }
+  #heard { min-height:16px; text-align:center; font-size:12px; color:#7fb6d9; padding:2px 16px; font-style:italic; }
+  #timers { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; padding:0 16px; }
+  #timers:empty { display:none; }
+  .timer { height:28px; padding:0 10px; font-size:11px; letter-spacing:.08em; font-family:Inter,system-ui,sans-serif; }
+  #memList { white-space:pre-wrap; }
   #note { display:none; text-align:center; color:#ffd27a; font-size:12px; padding:4px 16px; }
   .modal { position:fixed; inset:0; z-index:10; background:rgba(2,5,12,.88); display:none; align-items:center; justify-content:center; padding:20px; }
   .modal.show { display:flex; }
@@ -84,6 +89,8 @@
 <div id="stage"><canvas id="wisps"></canvas><canvas id="orb"></canvas></div>
 
 <div id="log"></div>
+<div id="heard"></div>
+<div id="timers"></div>
 <div id="note"></div>
 <div class="hint" id="hint">Tap 🎙️ to talk, or 👂 so Gideon wakes when you say its name.</div>
 <form id="form">
@@ -113,6 +120,9 @@
   <label>Pitch <span id="pitchVal"></span></label>
   <input id="pitchIn" type="range" min="0.6" max="1.5" step="0.05">
   <button type="button" id="testVoice">TEST VOICE</button>
+  <label>Memory (facts Gideon remembers about you)</label>
+  <p id="memList"></p>
+  <button type="button" id="forgetBtn">FORGET MEMORIES</button>
   <button type="button" id="saveSet">SAVE</button>
   <p>Your key is stored only on this phone, never in the website's code.</p>
 </div></div>
@@ -132,7 +142,14 @@ Rules:
 - Keep replies short and spoken-friendly: usually 1 to 4 sentences, since your replies are read aloud. No markdown, no bullet points, no emojis.
 - Be genuinely helpful with real questions (homework, facts, ideas, advice).
 - You can search the web with Google Search when a question needs current information (news, weather, scores, prices). You have no sensors or real-world controls; if asked to do something you can't, say so in character.
-- Be kind and appropriate for a teenage user.`;
+- Be kind and appropriate for a teenage user.
+
+Special abilities. Use these tags exactly; the app hides them and never reads them aloud:
+- Timers and reminders: add [TIMER: seconds | short label]. Work out the seconds yourself, using the current date and time given below for clock times like "at 7pm". Example reply: Timer set for five minutes. [TIMER: 300 | five minute timer]
+- To cancel all running timers, add [CANCEL].
+- Timers only ring while Gideon is open on screen. Mention that once if they set a long reminder.
+- Memory: when they tell you a lasting fact or preference worth keeping (birthday, favourite team, pet's name, a goal), add [REMEMBER: the fact, written about them in third person]. If they ask you to forget everything, add [FORGET].
+- Mood: add [MOOD: alert] for warnings or urgent news, or [MOOD: happy] for good news and celebrations. Otherwise add no mood tag.`;
 
 const log = document.getElementById('log');
 const form = document.getElementById('form');
@@ -238,7 +255,7 @@ function buildHead(){
   camera.position.set(0, -0.5, 6.4);
   camera.lookAt(0, -0.5, 0);
 
-  const uniforms = { uTime:{value:0}, uLevel:{value:0}, uFade:{value:0}, uOpen:{value:0}, uBlink:{value:0} };
+  const uniforms = { uTime:{value:0}, uLevel:{value:0}, uFade:{value:0}, uOpen:{value:0}, uBlink:{value:0}, uTint:{value:new THREE.Vector3(1,1,1)} };
   const vert = `
     attribute float aGap; varying float vGap; attribute float aIris; varying float vIris;
     varying vec3 vN; varying vec3 vView; varying float vY; varying vec3 vP;
@@ -251,7 +268,7 @@ function buildHead(){
       gl_Position = projectionMatrix*viewMatrix*wp;
     }`;
   const frag = `
-    uniform float uTime; uniform float uLevel; uniform float uFade; uniform float uOpen; uniform float uBlink;
+    uniform float uTime; uniform float uLevel; uniform float uFade; uniform float uOpen; uniform float uBlink; uniform vec3 uTint;
     varying float vGap; varying float vIris;
     varying vec3 vN; varying vec3 vView; varying float vY; varying vec3 vP;
     void main(){
@@ -274,6 +291,7 @@ function buildHead(){
       col = col*scan + vec3(0.9,0.97,1.0)*band*0.07;
       col = mix(col, vec3(0.2,0.3,0.45), clamp(vGap*uOpen*1.6,0.0,0.85)); // mouth opening
       col *= 1.0 - (0.38*smoothstep(0.2,0.9,vIris) + 0.2*smoothstep(0.85,1.0,vIris))*(1.0-uBlink); // soft iris + pupil
+      col *= uTint;                                                  // mood colour
       float a = 0.8 + fres*0.2;
       if(uFade > 0.5) a *= smoothstep(-2.25, -1.7, vY);            // shoulders fade out
       gl_FragColor = vec4(col, a);
@@ -328,7 +346,7 @@ function buildHead(){
   bustGeo.setAttribute('aGap', new THREE.BufferAttribute(new Float32Array(bp.count),1));
   bustGeo.setAttribute('aIris', new THREE.BufferAttribute(new Float32Array(bp.count),1));
   const bustMat = mat.clone();
-  bustMat.uniforms = {uTime:uniforms.uTime, uLevel:uniforms.uLevel, uFade:{value:1}, uOpen:{value:0}, uBlink:{value:0}};
+  bustMat.uniforms = {uTime:uniforms.uTime, uLevel:uniforms.uLevel, uFade:{value:1}, uOpen:{value:0}, uBlink:{value:0}, uTint:uniforms.uTint};
   const bust = new THREE.Mesh(bustGeo, bustMat);
   bust.position.z = -0.1;
   group.add(bust);
@@ -404,10 +422,35 @@ function drawWisps(){
     wcx.stroke();
   }
 }
+/* ---------- Mood colours ----------
+   Each mood is a colour "tint" that multiplies the hologram's colour.
+   [1,1,1] = no change (calm ice-blue). The tint eases smoothly
+   toward the target every frame, so colours fade instead of snapping. */
+const MOODS = {                       // tint = hologram colour multiplier, glow = title & button colour
+  calm:     { tint:[1,1,1],          glow:[95,212,255] },   // ice blue
+  thinking: { tint:[0.92,0.72,1.3],  glow:[178,140,255] },  // purple
+  alert:    { tint:[1.4,0.55,0.5],   glow:[255,107,95] },   // red
+  happy:    { tint:[1.15,1.0,0.62],  glow:[255,211,107] }   // gold
+};
+let moodName = 'calm', moodUntil = 0;
+const tint = [1,1,1], glow = [95,212,255];
+function setMood(m, ms){ moodName = MOODS[m] ? m : 'calm'; moodUntil = ms ? performance.now() + ms : 0; }
+function updateMood(now){
+  if(moodUntil && now > moodUntil){ moodName = 'calm'; moodUntil = 0; }
+  const goal = MOODS[thinking ? 'thinking' : moodName];
+  let changed = false;
+  for(let k=0;k<3;k++){
+    const d = goal.tint[k]-tint[k]; if(Math.abs(d) > 0.002){ tint[k] += d*0.06; changed = true; }
+    glow[k] += (goal.glow[k]-glow[k])*0.06;
+  }
+  if(changed) document.documentElement.style.setProperty('--glow', `rgb(${glow.map(Math.round)})`);
+}
+
 function animate(){
   t += 0.016;
   drawWisps();
   const now = performance.now();
+  updateMood(now);
   // find the mouth shape for right now
   let tgO = 0, tgR = 0;
   if(speaking && lipQueue.length){
@@ -451,12 +494,13 @@ function animate(){
     H.group.rotation.y = Math.sin(t*0.4)*0.3 + dragX;
     H.group.rotation.x = Math.sin(t*0.3)*0.05 + dragY + (speaking? Math.sin(t*3.1)*0.02 : 0);
     H.group.position.y = Math.sin(t*1.2)*0.04;
-    for(const r of H.rings){ r.rotation.z += 0.01*r.userData.sp; r.material.opacity = 0.3 + level*0.4; }
+    for(const r of H.rings){ r.rotation.z += 0.01*r.userData.sp; r.material.opacity = 0.3 + level*0.4; r.material.color.setRGB(Math.min(1,0.92*tint[0]), Math.min(1,0.96*tint[1]), Math.min(1,tint[2])); }
     H.motes.rotation.y += 0.002;
     const mp = H.motes.geometry.attributes.position;
     for(let i=0;i<mp.count;i++){ let y = mp.getY(i)+0.004; if(y>1.5) y=-1.6; mp.setY(i,y); }
     mp.needsUpdate = true;
     H.uniforms.uTime.value = t; H.uniforms.uLevel.value = level;
+    H.uniforms.uTint.value.set(tint[0], tint[1], tint[2]);
     H.renderer.render(H.scene, H.camera);
   }
   requestAnimationFrame(animate);
@@ -552,7 +596,7 @@ function openSettings(){
   nameIn.value = store.get('gideonName','Liam');
   cityIn.value = store.get('gideonCity','');
   rateIn.value = store.get('gideonRate','0.98'); pitchIn.value = store.get('gideonPitch','1.05'); showVals();
-  fillVoices();
+  fillVoices(); fillMemory();
   settingsEl.classList.add('show');
 }
 document.getElementById('gear').onclick = openSettings;
@@ -569,6 +613,7 @@ document.getElementById('saveSet').onclick = ()=>{
 /* ---------- Boot: one tap unlocks sound on iPhone ---------- */
 document.getElementById('boot').onclick = (e)=>{
   e.currentTarget.remove();
+  unlockAudio(); booted = true;
   const name = store.get('gideonName','Liam');
   const hour = new Date().getHours();
   const part = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
@@ -586,7 +631,26 @@ document.getElementById('boot').onclick = (e)=>{
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const micBtn = document.getElementById('micBtn'), wakeBtn = document.getElementById('wakeBtn');
 let rec = null, recMode = null, wakeOn = false, pauseTimer = null;
-const WAKE = /\b(gideon|gidion|gidean|gideone|giddy ?on|gid eon|get eon)\b/i;
+const heardEl = document.getElementById('heard');
+// How different two words are (number of letter changes needed)
+function editDist(a, b){
+  const d = Array.from({length:a.length+1}, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for(let j=1;j<=b.length;j++) d[0][j] = j;
+  for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++)
+    d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1] + (a[i-1]===b[j-1]?0:1));
+  return d[a.length][b.length];
+}
+// Find "Gideon" even when the phone mishears it (gidion, gideons, giddy on, kidian...)
+function findWake(text){
+  const words = text.toLowerCase().replace(/[^a-z' ]/g,' ').split(/\s+/).filter(Boolean);
+  for(let i=0;i<words.length;i++){
+    const w = words[i].replace(/'s$/,'');
+    const two = i+1 < words.length ? w + words[i+1] : '';
+    if(w.length >= 4 && editDist(w, 'gideon') <= ('gjk'.includes(w[0]) ? 2 : 1)) return {rest: words.slice(i+1).join(' ')};
+    if(two && two.length <= 8 && 'gjk'.includes(two[0]) && editDist(two, 'gideon') <= 2) return {rest: words.slice(i+2).join(' ')};
+  }
+  return null;
+}
 
 function stopRec(){
   clearTimeout(pauseTimer);
@@ -595,6 +659,12 @@ function stopRec(){
   micBtn.classList.remove('live');
 }
 function resumeWake(){ if(wakeOn && !thinking && !speaking) startRec('wake'); }
+// Safari sometimes stops listening without telling us. Every 3 seconds, check and restart.
+let lastStart = 0;
+setInterval(()=>{ if(wakeOn && !rec && !thinking && !speaking && !document.hidden) resumeWake(); }, 3000);
+// Safari also likes to stop after ~a minute of listening; restart before that happens
+setInterval(()=>{ if(wakeOn && recMode === 'wake' && Date.now() - lastStart > 50000 && !thinking && !speaking){ startRec('wake'); } }, 5000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) setTimeout(resumeWake, 500); });
 
 function startRec(mode){
   if(!SR){ note('Voice input needs Safari. Open Gideon in Safari (not inside another app).'); return; }
@@ -614,13 +684,14 @@ function startRec(mode){
     heard = (finals + interim).trim();
     clearTimeout(pauseTimer);
     if(mode === 'query'){
-      input.value = heard;
+      input.value = heard; heardEl.textContent = '';
       pauseTimer = setTimeout(()=>{ stopRec(); if(heard) sendText(heard); }, 1400);   // you paused: send it
     } else {
-      const m = heard.match(WAKE);
+      heardEl.textContent = 'Heard: ' + heard.slice(-60);
+      const m = findWake(heard);
       if(!m) return;
       pauseTimer = setTimeout(()=>{
-        const after = heard.slice(m.index + m[0].length).replace(/^[\s,.!?]+/, '').trim();
+        const after = (findWake(heard) || m).rest.trim();
         stopRec();
         if(after.split(' ').length >= 2) sendText(after);                    // "Gideon, what's the time?"
         else speak('Yes?', ()=> startRec('query'));                          // just "Gideon"
@@ -637,12 +708,14 @@ function startRec(mode){
     if(rec !== r) return;
     rec = null; micBtn.classList.remove('live');
     if(mode === 'query'){ clearTimeout(pauseTimer); if(heard && !thinking) sendText(heard); else { statusEl.textContent = 'Online'; resumeWake(); } }
-    else if(wakeOn) setTimeout(resumeWake, 300);                            // keep listening
+    else if(wakeOn) setTimeout(resumeWake, 150);                            // keep listening
   };
-  try{ r.start(); }catch(e){ note('Could not start the microphone. Tap 🎙️ to try again.'); }
+  try{ r.start(); lastStart = Date.now(); }
+  catch(e){ rec = null; if(mode === 'wake') statusEl.textContent = 'Mic paused, tap 👂'; else note('Could not start the microphone. Tap 🎙️ to try again.'); }
 }
 
 micBtn.onclick = ()=>{
+  unlockAudio();
   try{ speechSynthesis.cancel(); }catch(e){}
   if(recMode === 'query'){ stopRec(); statusEl.textContent='Online'; resumeWake(); return; }
   startRec('query');
@@ -653,6 +726,105 @@ wakeBtn.onclick = ()=>{
   if(wakeOn){ note(''); speak('Wake word active. Say Gideon when you need me.', ()=> startRec('wake')); }
   else { stopRec(); statusEl.textContent = 'Online'; }
 };
+
+/* ---------- Memory (remembered between visits) ----------
+   Gideon adds [REMEMBER: ...] to a reply when you tell it something
+   worth keeping. We save those facts on this phone and send them
+   along with every question, so Gideon "remembers" next time. */
+let memory = [];
+try{ memory = JSON.parse(store.get('gideonMemory','[]')) || []; }catch(e){ memory = []; }
+function saveMemory(){ store.set('gideonMemory', JSON.stringify(memory)); fillMemory(); }
+function remember(fact){
+  fact = fact.replace(/\s+/g,' ').trim().slice(0,160);
+  if(!fact || memory.some(m => m.toLowerCase() === fact.toLowerCase())) return;
+  memory.push(fact);
+  if(memory.length > 40) memory.shift();          // keep the newest 40
+  saveMemory();
+}
+function fillMemory(){
+  const el = document.getElementById('memList');
+  el.textContent = memory.length ? memory.map(m => '• ' + m).join('\n') : 'Nothing yet. Tell Gideon things like "my birthday is March 3rd".';
+}
+document.getElementById('forgetBtn').onclick = ()=>{ memory = []; saveMemory(); speak('Memory banks cleared.'); };
+
+/* ---------- Timers and reminders ----------
+   Gideon adds [TIMER: 300 | pizza] to a reply. We save the END time
+   (not "seconds left"), so a timer survives reloading the page.
+   Every second we check for timers that are due and ring them. */
+let timers = [], booted = false, actx = null;
+try{ timers = JSON.parse(store.get('gideonTimers','[]')) || []; }catch(e){ timers = []; }
+const timersEl = document.getElementById('timers');
+function saveTimers(){ store.set('gideonTimers', JSON.stringify(timers)); renderTimers(); }
+function addTimer(sec, label){ timers.push({id: Date.now() + Math.random(), end: Date.now() + sec*1000, label}); saveTimers(); }
+function fmtLeft(ms){
+  const s = Math.max(0, Math.ceil(ms/1000)), h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = String(s%60).padStart(2,'0');
+  return h ? `${h}:${String(m).padStart(2,'0')}:${x}` : `${m}:${x}`;
+}
+function renderTimers(){
+  const now = Date.now();
+  if(timersEl.children.length !== timers.length){            // rebuild the buttons only when the list changes
+    timersEl.innerHTML = '';
+    for(const tm of timers){
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'timer'; b.title = 'Tap to cancel';
+      b.onclick = ()=>{ timers = timers.filter(x => x.id !== tm.id); saveTimers(); };
+      timersEl.appendChild(b);
+    }
+  }
+  timers.forEach((tm, i)=>{ timersEl.children[i].textContent = '⏱ ' + tm.label + ' ' + fmtLeft(tm.end - now) + ' ✕'; });
+}
+// iPhone only allows sound after a tap, so we create the sound engine on the first tap
+function unlockAudio(){
+  try{ actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if(actx.state === 'suspended') actx.resume(); }catch(e){}
+}
+function chime(){                                     // three soft beeps, made from sine waves
+  if(!actx) return;
+  try{
+    const t0 = actx.currentTime;
+    [0, 0.32, 0.64].forEach((d, i)=>{
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sine'; o.frequency.value = i === 2 ? 1175 : 880;
+      g.gain.setValueAtTime(0.0001, t0+d);
+      g.gain.exponentialRampToValueAtTime(0.35, t0+d+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+d+0.28);
+      o.connect(g); g.connect(actx.destination); o.start(t0+d); o.stop(t0+d+0.3);
+    });
+  }catch(e){}
+}
+function ringTimers(due){
+  const late = due.some(d => Date.now() - d.end > 60000);
+  const names = due.map(d => d.label).join(' and ');
+  const msg = late ? `While I was offline, your ${names} finished.` : `${store.get('gideonName','Liam')}, your ${names} is complete.`;
+  setMood('alert', 6000);
+  stopRec(); chime();
+  addMsg('ai', msg);
+  setTimeout(()=> speak(msg, resumeWake), 1100);
+}
+setInterval(()=>{
+  if(!timers.length) return;
+  const now = Date.now(), due = timers.filter(x => x.end <= now);
+  // wait until Gideon is switched on and not mid-sentence, so we don't talk over it
+  if(due.length && booted && !speaking && !thinking){ timers = timers.filter(x => x.end > now); saveTimers(); ringTimers(due); }
+  else renderTimers();
+}, 1000);
+renderTimers();
+
+/* Pull Gideon's hidden [TAGS] out of a reply and act on them.
+   Returns the reply with the tags removed (what gets shown and spoken). */
+function applyActions(raw){
+  const clean = raw.replace(/\[\s*(TIMER|REMEMBER|FORGET|CANCEL|MOOD)\b\s*:?\s*([^\]]*)\]/gi, (all, kind, arg)=>{
+    kind = kind.toUpperCase(); arg = (arg || '').trim();
+    if(kind === 'TIMER'){
+      const [secs, ...rest] = arg.split('|'); const sec = parseFloat(secs);
+      if(sec > 0 && sec <= 7*86400) addTimer(sec, rest.join('|').trim() || 'timer');
+    }
+    else if(kind === 'CANCEL'){ timers = []; saveTimers(); }
+    else if(kind === 'REMEMBER'){ if(arg) remember(arg); }
+    else if(kind === 'FORGET'){ memory = []; saveMemory(); }
+    else if(kind === 'MOOD'){ setMood(arg.toLowerCase(), 8000 + raw.length*60); }
+    return '';
+  });
+  return clean.replace(/[ \t]{2,}/g, ' ').trim();
+}
 
 /* ---------- Chat ---------- */
 function addMsg(who, text){
@@ -677,7 +849,9 @@ let searchOK = true;    // turns off automatically if web search isn't free for 
 
 async function callGemini(model, useSearch, quick = true){
   const sys = SYSTEM.replace('{NAME}', store.get('gideonName','Liam')).replace('{CITY}', store.get('gideonCity','') || 'an unknown city (ask them which city if it matters)')
-    + '\nCurrent date and time: ' + new Date().toString() + '.';
+    + '\nCurrent date and time: ' + new Date().toString() + '.'
+    + (memory.length ? '\nThings you remember about them from earlier conversations: ' + memory.join('; ') + '.' : '')
+    + (timers.length ? '\nTimers running now: ' + timers.map(x => x.label + ' (' + fmtLeft(x.end - Date.now()) + ' left)').join(', ') + '.' : '\nNo timers are running.');
   const body = {
     system_instruction: { parts: [{ text: sys }] },
     contents: history.slice(-20).map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }))
@@ -747,7 +921,7 @@ async function sendText(text){
   const body = addMsg('ai', '…').querySelector('.body');
   let reply;
   try{
-    reply = await askGemini() || "I'm afraid I have nothing to report.";
+    reply = applyActions(await askGemini() || '') || (timers.length ? 'Done.' : "I'm afraid I have nothing to report.");
     history.push({role:'assistant', content:reply});
   }catch(err){
     history.pop();
@@ -758,6 +932,7 @@ async function sendText(text){
     if(err.status === 408) reply = "My servers are taking too long to respond. Please try again.";
     if(err.message === 'Failed to fetch') reply = "I can't reach my servers. Please check your internet connection.";
     console.warn(err);
+    setMood('alert', 5000);
     note('Google says: ' + String(err.message || err).slice(0, 220));
   }
   body.textContent = reply; log.scrollTop = log.scrollHeight;
@@ -767,6 +942,7 @@ async function sendText(text){
 
 form.addEventListener('submit', (e)=>{
   e.preventDefault();
+  unlockAudio();
   try{ speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance('')); }catch(err){}  // unlock sound on tap
   sendText(input.value);
 });
